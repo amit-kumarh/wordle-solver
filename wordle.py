@@ -1,15 +1,14 @@
 from collections import Counter, defaultdict
 from scipy.stats import entropy
 from wordfreq import word_frequency as freq
-import itertools
 from tqdm import tqdm
-import utils
+import itertools
 import numpy as np
 import json
 import typer
-import os.path
 from typing import List
 import pprint
+import utils
 
 app = typer.Typer()
 PATTERNS = list(itertools.product(range(3), repeat=5))
@@ -25,7 +24,7 @@ def get_sorted_words():
     sorted_words = sorted(raw_freqs, key= lambda x: raw_freqs[x])
     return sorted_words
     
-def gen_weights(width=10, cutoff=3000):
+def gen_weights(width=10, cutoff=2500):
     '''
     Calculate probability of each word in the wordlist of being a wordle answer.
     This calculation is done by applying a sigmoid function with the
@@ -127,15 +126,37 @@ def calc_entropies(guesses, rem_words, pattern_dict, weights):
             distribution
     '''
     entropies = {}
-    for guess in guesses:
+    for guess in tqdm(guesses):
         # Calculate entropy of distribution for how many possible remaining words will exist from all 243 patterns
         cnt = []
         for pattern in PATTERNS:
             matches = pattern_dict[guess][pattern]
             matches = matches.intersection(rem_words)
             cnt.append(sum(weights[match] for match in matches)/len(rem_words))
-        entropies[guess] = entropy(cnt)
+        entropies[guess] = entropy(cnt, base=2)
     return entropies
+
+def get_probs(rem_words, weights):
+    rem_weight_sum = sum(v for k, v in weights.items() if k in rem_words)
+    return {word: weights[word]/rem_weight_sum for word in rem_words}
+
+def entropy_to_score(ent):
+    min_score = 2**(-ent) + 2 * (1 - 2**(-ent))
+    return min_score + 1.5 * ent / 11.5
+
+def get_expected_scores(rem_words, words, entropies, weights):
+    probs = get_probs(rem_words, weights)
+    rem_entropy = entropy(list(probs.values()), base=2)
+
+    scores = {}
+    for word in words:
+        scores[word] = probs.get(word, 0) + (1-probs.get(word, 0)) * (1 + entropy_to_score(rem_entropy - entropies[word]))
+    return scores
+
+def optimal_guess(rem_words, words, entropies, weights, num=1):
+    scores = get_expected_scores(rem_words, words, entropies, weights) 
+    sorted_scores = sorted(list(scores.items()), key=lambda x: x[1])
+    return sorted_scores[:num]
 
 def play_game(ans, words, pattern_dict, weights, savetime=True):
     words = set(words)
@@ -156,7 +177,7 @@ def play_game(ans, words, pattern_dict, weights, savetime=True):
         else:
             # Guess whatever word has the maximum entropy of its distribution
             entropies = calc_entropies(words, rem_words, pattern_dict, weights)
-            guess = max(entropies.items(), key=lambda x: x[1])[0]
+            guess = optimal_guess(rem_words, words, entropies, weights, 1)[0][0]
 
         # Reduce the remaining words to those that match the new pattern 
         pattern = make_pattern(guess, ans)
@@ -187,13 +208,11 @@ def test_all(of_name: str=typer.Argument('stats.json', help='Where to save resul
     Args:
         of_name (str): where to write test results
     '''
-    # Loading text files
+    # Loading files
     words = utils.get_words()
 
     with open('solutions.txt', 'r') as sol:
         solutions = list(i.strip() for i in sol.readlines())
-
-    # Loading pattern_dict
     pattern_dict = utils.get_pattern_dict()
     weights = gen_weights()
 
@@ -211,8 +230,11 @@ def play_words(answers: List[str]):
     '''
     Simlulate a list of Wordle words
     '''
+    typer.echo('Loading wordlist...')
     words = utils.get_words()
+    typer.echo('Loading pattern dictionary (may take up to two minutes)...')
     pattern_dict = utils.get_pattern_dict()
+    typer.echo('Generating frequency weights...')
     weights = gen_weights()
     for ans in answers:
         play_game(ans, words, pattern_dict, weights, False)
@@ -231,10 +253,12 @@ def play():
 
     for i in range(1, 7):
         entropies = calc_entropies(words, rem_words, pattern_dict, weights)
-        entropies = sorted(list(entropies.items()), reverse=True, key=lambda x: x[1])
+        probs = get_probs(rem_words, weights)
+        best_guesses = optimal_guess(rem_words, words, entropies, weights, 10)
+        display_guesses = [(w[0], round(best_guesses[i][1], 3), round(entropies[w[0]], 3), round(probs.get(w[0], 0), 3)) for i, w in enumerate(best_guesses)]
         if len(rem_words) > 1:
             typer.echo(f'{len(rem_words)} words are remaining. Top guesses are:')
-            typer.echo(pprint.pformat(entropies[:10]))
+            typer.echo(pprint.pformat(display_guesses))
         guess = typer.prompt('Guess:\n>')
 
         # Reduce the remaining words to those that match the new pattern 
@@ -248,7 +272,7 @@ def play():
 
         if len(rem_words) < 20:
             typer.echo('Remaining words are:')
-            typer.echo(pprint.pformat([(word, weights[word]) for word in rem_words]))
+            typer.echo(pprint.pformat([(word, round(weights[word], 4)) for word in rem_words]))
 
     raise typer.Exit()
 
@@ -256,5 +280,3 @@ def play():
 
 if __name__ == '__main__':
     app()
-        
-    
