@@ -99,7 +99,7 @@ def gen_pattern_dict(compress: bool=typer.Option(True, help='Compress patterns f
     path = pathlib.Path(__file__).parent.resolve()
     words = utils.get_words()
     pattern_dict = defaultdict(lambda: defaultdict(set))
-    for word in tqdm(words[:10]):
+    for word in tqdm(words):
         for word2 in words:
             pattern = make_pattern(word, word2)
             pattern_dict[word][pattern].add(word2)

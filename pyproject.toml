@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "amitkh_wordle"
-version = "0.1.0"
+version = "0.3.0"
 description = "Entropy based Wordle Solver (CLI). Inspired by 3 Blue 1 Brown"
 authors = ["Amit Kumar <amitkh@gmail.com>"]
 readme = "README.md"
