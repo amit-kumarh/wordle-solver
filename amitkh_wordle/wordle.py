@@ -8,7 +8,8 @@ import json
 import typer
 from typing import List
 import pprint
-import utils
+import pathlib
+from amitkh_wordle import utils
 
 app = typer.Typer()
 PATTERNS = list(itertools.product(range(3), repeat=5))
@@ -95,17 +96,18 @@ def gen_pattern_dict(compress: bool=typer.Option(True, help='Compress patterns f
         pattern_dict (dict): Dictionary mapping all patterns and words to
             remaining candidates
     '''
+    path = pathlib.Path(__file__).parent.resolve()
     words = utils.get_words()
     pattern_dict = defaultdict(lambda: defaultdict(set))
-    for word in tqdm(words):
+    for word in tqdm(words[:10]):
         for word2 in words:
             pattern = make_pattern(word, word2)
             pattern_dict[word][pattern].add(word2)
     pattern_dict = dict(pattern_dict)
     if compress:
-        utils.compress_pickle('patterns.pbz2', pattern_dict)
+        utils.compress_pickle(path / 'patterns.pbz2', pattern_dict)
     else:
-        utils.reg_pickle('patterns.p', pattern_dict)
+        utils.reg_pickle(path / 'patterns.p', pattern_dict)
 
 def calc_entropies(guesses, rem_words, pattern_dict, weights):
     '''
@@ -211,8 +213,7 @@ def test_all(of_name: str=typer.Argument('stats.json', help='Where to save resul
     # Loading files
     words = utils.get_words()
 
-    with open('solutions.txt', 'r') as sol:
-        solutions = list(i.strip() for i in sol.readlines())
+    solutions = pkgutil.get_data(__name__, 'solutions.txt').decode('ascii').split('\n')
     pattern_dict = utils.get_pattern_dict()
     weights = gen_weights()
 
@@ -251,18 +252,23 @@ def play():
     words = set(words)
     rem_words = words.copy()
 
-    for i in range(1, 7):
+    for i in range(1, 11):
         entropies = calc_entropies(words, rem_words, pattern_dict, weights)
         probs = get_probs(rem_words, weights)
         best_guesses = optimal_guess(rem_words, words, entropies, weights, 10)
         display_guesses = [(w[0], round(best_guesses[i][1], 3), round(entropies[w[0]], 3), round(probs.get(w[0], 0), 3)) for i, w in enumerate(best_guesses)]
+        display_guesses.insert(0, ('Word', 'Expected Score', 'Entropy', 'Probability of being correct'))
         if len(rem_words) > 1:
             typer.echo(f'{len(rem_words)} words are remaining. Top guesses are:')
             typer.echo(pprint.pformat(display_guesses))
-        guess = typer.prompt('Guess:\n>')
+        guess = ''
+        while guess not in words:
+            guess = typer.prompt('Guess:\n>')
 
         # Reduce the remaining words to those that match the new pattern 
-        pattern = typer.prompt('What was your pattern? (Green=2, Yellow=1, Grey=0)\n>')
+        pattern = ''
+        while (len(pattern)) != 5 or (not pattern.isnumeric()):
+            pattern = typer.prompt('What was your pattern? (Green=2, Yellow=1, Grey=0)\n>')
         pattern = tuple(int(i) for i in pattern)
         rem_words = rem_words.intersection(pattern_dict[guess][pattern])
         
