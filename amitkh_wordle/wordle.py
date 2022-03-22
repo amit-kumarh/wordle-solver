@@ -241,7 +241,10 @@ def play_words(answers: List[str]):
         play_game(ans, words, pattern_dict, weights, False)
 
 @app.command()
-def play():
+def play(savetime: bool=typer.Option(False, '--savetime', '-s', help='Save time by not calculating the first word which is always the same')):
+    '''
+    Runs solver in interactive mode
+    '''
     typer.echo('Loading wordlist...')
     words = utils.get_words()
     typer.echo('Loading pattern dictionary (may take up to two minutes)...')
@@ -251,8 +254,20 @@ def play():
 
     words = set(words)
     rem_words = words.copy()
+    init = 1
 
-    for i in range(1, 11):
+    # Save time since the first guess will always be the same
+    if savetime:
+        guess = 'tares'
+        pattern = ''
+        while (len(pattern)) != 5 or (not pattern.isnumeric()):
+            pattern = typer.prompt('What was your pattern from "tares"? (Green=2, Yellow=1, Grey=0)\n>')
+        pattern = tuple(int(i) for i in pattern)
+        rem_words = rem_words.intersection(pattern_dict[guess][pattern])
+        typer.echo(f'{len(rem_words)} words are remaining')
+        init = 2
+
+    for i in range(init, 11):
         entropies = calc_entropies(words, rem_words, pattern_dict, weights)
         probs = get_probs(rem_words, weights)
         best_guesses = optimal_guess(rem_words, words, entropies, weights, 10)
